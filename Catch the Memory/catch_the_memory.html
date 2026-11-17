@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catch the Memory</title>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #673AB7;
+    --primary-dark: #4e2a8e;
+    --ink: #222;
+    --muted: #6b6b7b;
+    --line: #e4e0ee;
+    --accent: #673AB7;
+    --emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body {
+    font-family: 'Ubuntu', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(160deg, #f0eafb 0%, #e1d6f5 55%, #d5c6f0 100%) fixed;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  button { font-family: inherit; }
+  .wrapper {
+    width: min(760px, 100%);
+    padding: 24px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(103, 58, 183, 0.10);
+    position: relative;
+  }
+  .screen[hidden] { display: none; }
+  /* ---------- Animated title ---------- */
+  .emblem { display: flex; justify-content: center; margin-bottom: 10px; }
+  .mini {
+    position: relative; display: block; width: 34px; height: 44px; margin: 0 6px;
+    animation: miniflip 3.6s ease-in-out infinite; animation-delay: calc(var(--k) * .55s);
+  }
+  .mini i, .mini b {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    border-radius: 7px; font-style: normal; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    box-shadow: 0 3px 8px rgba(103, 58, 183, .25);
+  }
+  .mini i { background: linear-gradient(145deg, #7e57c2, var(--primary-dark)); color: #fff; font-weight: 700; font-size: 20px; }
+  .mini b { background: #fff; border: 2px solid #b39ddb; transform: rotateY(180deg); font-weight: 400; font-size: 20px; font-family: var(--emoji); }
+  @keyframes miniflip {
+    0%, 38%   { transform: perspective(300px) translateY(0) rotateY(0deg); }
+    44%       { transform: perspective(300px) translateY(-8px) rotateY(90deg); }
+    50%, 88%  { transform: perspective(300px) translateY(0) rotateY(180deg); }
+    94%       { transform: perspective(300px) translateY(-8px) rotateY(270deg); }
+    100%      { transform: perspective(300px) translateY(0) rotateY(360deg); }
+  }
+
+  h1.title {
+    font-size: clamp(30px, 7vw, 48px); text-align: center; font-weight: 700; letter-spacing: .5px;
+    line-height: 1.15; color: var(--primary);
+  }
+  .title .w { display: inline-block; white-space: nowrap; }
+  .title .ch {
+    display: inline-block;
+    animation: drop .7s cubic-bezier(.3, 1.6, .5, 1) both, wave 2.4s ease-in-out infinite, hue 5s linear infinite;
+    animation-delay: calc(var(--i) * 70ms), calc(1s + var(--i) * 110ms), calc(var(--i) * -300ms);
+  }
+  @keyframes drop {
+    from { opacity: 0; transform: translateY(-46px) rotate(-18deg) scale(.4); }
+    to   { opacity: 1; transform: translateY(0) rotate(0) scale(1); }
+  }
+  @keyframes wave {
+    0%, 100% { transform: translateY(0) rotate(0); }
+    25%      { transform: translateY(-7px) rotate(-3deg); }
+    75%      { transform: translateY(3px) rotate(3deg); }
+  }
+  @keyframes hue {
+    0%, 100% { color: #673AB7; }
+    25%      { color: #8e24aa; }
+    50%      { color: #d81b60; }
+    75%      { color: #3949ab; }
+  }
+  .title-bar {
+    height: 4px; width: min(260px, 60%); margin: 10px auto 0; border-radius: 99px;
+    background: linear-gradient(90deg, #673AB7, #d81b60, #fdd835, #43a047, #1e88e5, #673AB7);
+    background-size: 300% 100%; animation: slide 4s linear infinite;
+  }
+  @keyframes slide { to { background-position: -300% 0; } }
+  .sub { text-align: center; color: var(--muted); margin: 6px 0 22px; font-size: 15px; }
+  h2 { font-size: 20px; text-align: center; margin-bottom: 4px; }
+
+  /* ---------- Mode screen ---------- */
+  .modes { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); }
+  .mode-btn {
+    cursor: pointer; background: #fff; border: 2px solid var(--mc);
+    border-radius: 12px; padding: 20px 12px; text-align: center;
+    transition: transform .15s, background .2s, color .2s;
+  }
+  .mode-btn:hover, .mode-btn:focus-visible { background: var(--mc); color: #fff; transform: translateY(-2px); outline: none; }
+  .mode-btn .m-name { display: block; font-size: 22px; font-weight: 700; color: var(--mc); }
+  .mode-btn .m-time { display: block; font-size: 16px; margin-top: 4px; }
+  .mode-btn:hover .m-name, .mode-btn:focus-visible .m-name { color: #fff; }
+  .rules { margin-top: 18px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+  /* ---------- Topic screen ---------- */
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .link-btn {
+    cursor: pointer; font-size: 14px; color: var(--primary); background: #fff;
+    border: 2px solid var(--primary); border-radius: 6px; padding: 5px 12px; transition: .2s;
+  }
+  .link-btn:hover, .link-btn:focus-visible { background: var(--primary); color: #fff; outline: none; }
+  .chip { font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: 99px; color: #fff; background: var(--primary); white-space: nowrap; }
+  .topics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+  .topic-btn {
+    cursor: pointer; background: #fff; border: 2px solid var(--tc); border-radius: 12px;
+    padding: 14px 6px; text-align: center; transition: transform .15s, background .2s;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .topic-btn:hover, .topic-btn:focus-visible { transform: translateY(-2px); background: color-mix(in srgb, var(--tc) 12%, #fff); outline: none; }
+  .topic-btn .t-ico { font-size: 34px; font-family: var(--emoji); line-height: 1; }
+  .topic-btn .t-name { font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--ink); }
+
+  /* ---------- Game screen ---------- */
+  .game-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .game-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; }
+  .game-title .chip { background: var(--mode-color, var(--primary)); }
+  .head-actions { display: flex; gap: 8px; }
+
+  .bar { height: 8px; border-radius: 99px; background: #eee; overflow: hidden; margin-bottom: 12px; }
+  .bar > i { display: block; height: 100%; width: 100%; background: var(--primary); border-radius: 99px; transition: width .25s linear, background .3s; }
+  .bar.low > i { background: #e53935; }
+
+  .board {
+    display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(4, auto);
+    gap: 10px; width: 100%;
+  }
+  .card {
+    background: none; border: 0; padding: 0; cursor: pointer; perspective: 800px;
+    aspect-ratio: 1 / 1.15; -webkit-tap-highlight-color: transparent;
+  }
+  .card:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; border-radius: 10px; }
+  .card-inner {
+    position: relative; display: block; width: 100%; height: 100%;
+    transform-style: preserve-3d; transition: transform .35s;
+  }
+  .card.flipped .card-inner { transform: rotateY(180deg); }
+  .face {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; border-radius: 9px;
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    box-shadow: 0 3px 10px rgba(0,0,0,.10); user-select: none;
+  }
+  .face-front { background: linear-gradient(145deg, #7e57c2, var(--primary-dark)); color: #fff; }
+  .face-front .q { font-size: clamp(22px, 5vw, 36px); font-weight: 700; opacity: .9; }
+  .face-back { background: #fff; border: 2px solid var(--accent); transform: rotateY(180deg); padding: 2px; gap: 2px; }
+  .ico { font-size: clamp(22px, 5.4vw, 42px); line-height: 1; font-family: var(--emoji); display: flex; }
+  .ico svg { width: 1em; height: 1em; display: block; }
+  .lbl { font-size: clamp(8px, 1.7vw, 12px); line-height: 1.1; text-align: center; font-weight: 500; color: #333; padding: 0 2px; }
+  .card.matched .face-back { background: #e8f5e9; border-color: #43a047; }
+  .card.matched .card-inner { animation: pop .4s ease; }
+  .card.missed .face-back { background: #ffebee; border-color: #e53935; }
+  .card.shake { animation: shake .35s ease-in-out; }
+  .card.matched, .card.missed { cursor: default; }
+  @keyframes pop { 50% { transform: rotateY(180deg) scale(1.08); } }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); } 20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(5px); }
+  }
+
+  .details {
+    display: flex; align-items: center; justify-content: space-around; gap: 8px;
+    margin-top: 14px; padding: 10px 14px; background: #faf8fe; border: 1px solid var(--line); border-radius: 8px;
+  }
+  .details p { font-size: 17px; display: flex; gap: 6px; align-items: baseline; }
+  .details p + p { border-left: 1px solid #ccc; padding-left: 14px; }
+  .details p span { color: var(--muted); font-size: 14px; }
+  .details b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .details .low b { color: #e53935; }
+
+  /* ---------- Result overlay ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(30, 20, 50, .55); display: flex;
+    align-items: center; justify-content: center; padding: 16px; z-index: 10;
+  }
+  .overlay[hidden] { display: none; }
+  .modal {
+    background: #fff; border-radius: 14px; padding: 26px 22px; width: min(400px, 100%);
+    text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.3); animation: rise .3s ease;
+  }
+  @keyframes rise { from { transform: translateY(20px); opacity: 0; } }
+  .modal .big { font-size: 46px; line-height: 1; font-family: var(--emoji); }
+  .modal h3 { font-size: 24px; margin: 8px 0 4px; }
+  .modal.win h3 { color: #2e7d32; } .modal.lose h3 { color: #c62828; }
+  .modal p { color: var(--muted); font-size: 15px; line-height: 1.5; }
+  .stars { font-size: 26px; letter-spacing: 4px; margin-top: 6px; color: #f9a825; }
+  .res-stats { display: flex; justify-content: center; gap: 22px; margin: 14px 0 18px; }
+  .res-stats div { font-size: 13px; color: var(--muted); }
+  .res-stats b { display: block; font-size: 20px; color: var(--ink); }
+  .modal-actions { display: flex; flex-direction: column; gap: 8px; }
+  .btn-fill {
+    cursor: pointer; font-size: 15px; color: #fff; background: var(--primary); border: 2px solid var(--primary);
+    border-radius: 6px; padding: 9px 12px; transition: .2s;
+  }
+  .btn-fill:hover, .btn-fill:focus-visible { background: var(--primary-dark); border-color: var(--primary-dark); outline: none; }
+  .modal-actions .row { display: flex; gap: 8px; }
+  .modal-actions .row .link-btn { flex: 1; }
+
+  @media (max-width: 600px) {
+    .wrapper { padding: 14px; }
+    .board { gap: 6px; }
+    .modes { grid-template-columns: 1fr; }
+    .topics { grid-template-columns: repeat(2, 1fr); }
+    .details p { font-size: 15px; }
+    .details p + p { padding-left: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-inner, .bar > i { transition: none; }
+    .card.shake, .card.matched .card-inner, .modal { animation: none; }
+    .title .ch, .mini, .title-bar { animation: none; }
+  }
+  ::selection { color: #fff; background: var(--primary); }
+</style>
+</head>
+<body>
+
+<!-- Shared gradient used by the Rainbow Octagon icon -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e53935"/><stop offset=".2" stop-color="#fb8c00"/>
+      <stop offset=".4" stop-color="#fdd835"/><stop offset=".6" stop-color="#43a047"/>
+      <stop offset=".8" stop-color="#1e88e5"/><stop offset="1" stop-color="#8e24aa"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="wrapper">
+
+  <!-- 1. Mode -->
+  <section class="screen" id="screenMode">
+    <div class="emblem" aria-hidden="true">
+      <span class="mini" style="--k:0"><i>?</i><b>🧠</b></span>
+      <span class="mini" style="--k:1"><i>?</i><b>🧩</b></span>
+      <span class="mini" style="--k:2"><i>?</i><b>✨</b></span>
+    </div>
+    <h1 class="title" id="title" aria-label="Catch the Memory"></h1>
+    <div class="title-bar" aria-hidden="true"></div>
+    <p class="sub">Flip the cards, find every matching pair before time runs out.</p>
+    <h2>Choose a mode</h2>
+    <div class="modes" id="modes" style="margin-top:16px"></div>
+    <p class="rules">24 cards &middot; 12 pairs &middot; The timer starts on your first flip.<br>If cards are still face-down when time is up, you lose.</p>
+  </section>
+
+  <!-- 2. Topic -->
+  <section class="screen" id="screenTopic" hidden>
+    <div class="topbar">
+      <button class="link-btn" id="backToMode" type="button">&larr; Mode</button>
+      <span class="chip" id="modeChip"></span>
+    </div>
+    <h2>Choose a topic</h2>
+    <div class="topics" id="topics"></div>
+  </section>
+
+  <!-- 3. Game -->
+  <section class="screen" id="screenGame" hidden>
+    <div class="game-head">
+      <div class="game-title"><span id="gameTopic"></span><span class="chip" id="gameMode"></span></div>
+      <div class="head-actions">
+        <button class="link-btn" id="restartBtn" type="button">Restart</button>
+        <button class="link-btn" id="changeTopicBtn" type="button">Topics</button>
+      </div>
+    </div>
+    <div class="bar" id="bar"><i id="barFill"></i></div>
+    <div class="board" id="board" aria-label="Memory card board"></div>
+    <div class="details">
+      <p id="timeP"><span>Time</span><b id="timeB">0:00</b></p>
+      <p><span>Flips</span><b id="flipsB">0</b></p>
+      <p><span>Pairs</span><b id="pairsB">0 / 12</b></p>
+    </div>
+  </section>
+</div>
+
+<!-- Result -->
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="resTitle">
+    <div class="big" id="resIcon"></div>
+    <h3 id="resTitle"></h3>
+    <p id="resMsg"></p>
+    <div class="stars" id="resStars"></div>
+    <div class="res-stats">
+      <div><b id="resTime"></b>Time left</div>
+      <div><b id="resFlips"></b>Flips</div>
+      <div><b id="resPairs"></b>Pairs</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-fill" id="againBtn" type="button">Play again</button>
+      <div class="row">
+        <button class="link-btn" id="resTopicBtn" type="button">Change topic</button>
+        <button class="link-btn" id="resModeBtn" type="button">Change mode</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<noscript>This game needs JavaScript enabled.</noscript>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------- Custom icons (items with no standard emoji) ---------------- */
+  const S = (inner) => `<svg viewBox="0 0 64 64" aria-hidden="true">${inner}</svg>`;
+  const J = 'stroke-linejoin="round" stroke-width="2"';
+  const SVG = {
+    // Shapes and Colors
+    heart: S(`<path d="M32 54C14 40 6 30 6 20 6 12 12 8 18 8 24 8 29 11 32 16 35 11 40 8 46 8 52 8 58 12 58 20 58 30 50 40 32 54Z" fill="#e53935" stroke="#b71c1c" ${J}/>`),
+    star: S(`<polygon points="32,8 38.5,26.1 57.7,26.7 42.5,38.4 47.9,56.8 32,46 16.1,56.8 21.5,38.4 6.3,26.7 25.5,26.1" fill="#fdd835" stroke="#f9a825" ${J}/>`),
+    circle: S(`<circle cx="32" cy="32" r="25" fill="#1e88e5" stroke="#0d47a1" stroke-width="2"/>`),
+    triangle: S(`<polygon points="32,8 58,54 6,54" fill="#43a047" stroke="#1b5e20" ${J}/>`),
+    square: S(`<rect x="10" y="10" width="44" height="44" rx="3" fill="#fb8c00" stroke="#e65100" ${J}/>`),
+    diamond: S(`<polygon points="32,5 56,32 32,59 8,32" fill="#8e24aa" stroke="#4a148c" ${J}/>`),
+    oval: S(`<ellipse cx="32" cy="32" rx="26" ry="15" fill="#ec407a" stroke="#ad1457" stroke-width="2"/>`),
+    rect: S(`<rect x="5" y="16" width="54" height="32" rx="2" fill="#795548" stroke="#3e2723" ${J}/>`),
+    pentagon: S(`<polygon points="32,8 57,26.5 47.5,56 16.5,56 7,26.5" fill="#00897b" stroke="#004d40" ${J}/>`),
+    hexagon: S(`<polygon points="58,32 45,54.5 19,54.5 6,32 19,9.5 45,9.5" fill="#ffc107" stroke="#f9a825" ${J}/>`),
+    crescent: S(`<g transform="translate(1 1) scale(2.6)"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#cfd8dc" stroke="#78909c" stroke-width=".7" stroke-linejoin="round"/></g>`),
+    octagon: S(`<polygon points="20.4,4 43.6,4 60,20.4 60,43.6 43.6,60 20.4,60 4,43.6 4,20.4" fill="url(#rainbow)" stroke="#555" ${J}/>`),
+    // Vehicles
+    submarine: S(`<rect x="31" y="9" width="3" height="12" fill="#555"/><rect x="31" y="9" width="10" height="3" fill="#555"/>
+      <rect x="25" y="19" width="16" height="11" rx="3" fill="#f9a825" stroke="#c77c00" stroke-width="1.5"/>
+      <ellipse cx="30" cy="39" rx="25" ry="12" fill="#fbc02d" stroke="#c77c00" stroke-width="2"/>
+      <circle cx="18" cy="39" r="3.2" fill="#81d4fa" stroke="#555" stroke-width="1.5"/><circle cx="30" cy="39" r="3.2" fill="#81d4fa" stroke="#555" stroke-width="1.5"/><circle cx="42" cy="39" r="3.2" fill="#81d4fa" stroke="#555" stroke-width="1.5"/>
+      <rect x="54" y="32" width="4" height="14" rx="2" fill="#555"/><path d="M5 30 L1 24 L9 28Z" fill="#c77c00"/>`),
+    balloon: S(`<path d="M32 5C14 5 9 22 16 32c4 6 8 9 10 14h12c2-5 6-8 10-14C55 22 50 5 32 5Z" fill="#e53935" stroke="#b71c1c" stroke-width="1.5"/>
+      <path d="M32 5C23 14 23 34 28 46h8c5-12 5-32-4-41Z" fill="#fdd835"/>
+      <line x1="26" y1="46" x2="27" y2="54" stroke="#5d4037" stroke-width="1.5"/><line x1="38" y1="46" x2="37" y2="54" stroke="#5d4037" stroke-width="1.5"/>
+      <rect x="26" y="54" width="12" height="8" rx="1.5" fill="#8d6e63" stroke="#4e342e" stroke-width="1.5"/>`),
+    // Sports and Hobbies
+    racket: S(`<g transform="translate(32 32) rotate(35) scale(0.9) translate(-32 -32)">
+      <g stroke="#9e9e9e" stroke-width="1"><line x1="26" y1="11" x2="26" y2="33"/><line x1="32" y1="6" x2="32" y2="38"/><line x1="38" y1="11" x2="38" y2="33"/>
+      <line x1="21" y1="16" x2="43" y2="16"/><line x1="19" y1="22" x2="45" y2="22"/><line x1="21" y1="28" x2="43" y2="28"/></g>
+      <ellipse cx="32" cy="22" rx="13" ry="17" fill="none" stroke="#2e7d32" stroke-width="4"/>
+      <path d="M25 35L31 41M39 35L33 41" stroke="#2e7d32" stroke-width="3" fill="none"/>
+      <rect x="30" y="40" width="4" height="18" rx="2" fill="#5d4037"/></g>`),
+    bat: S(`<g transform="translate(34 28) rotate(40) scale(0.95) translate(-32 -32)">
+      <path d="M28 4H36C37.5 4 38.5 6 38.5 9V32C38.5 39 35.5 43 34.5 48V55H29.5V48C28.5 43 25.5 39 25.5 32V9C25.5 6 26.5 4 28 4Z" fill="#e0b27a" stroke="#8d6e63" stroke-width="2" stroke-linejoin="round"/>
+      <rect x="27" y="55" width="10" height="4" rx="2" fill="#8d6e63"/></g>
+      <circle cx="13" cy="51" r="8" fill="#fff" stroke="#9e9e9e" stroke-width="1.5"/><path d="M8 46Q12 51 8 56M18 46Q14 51 18 56" stroke="#e53935" stroke-width="1.3" fill="none"/>`),
+    // Space
+    constellation: S(`<circle cx="32" cy="32" r="30" fill="#1a237e"/>
+      <polyline points="12,44 22,28 34,36 44,17 53,30" fill="none" stroke="#9fa8da" stroke-width="1.5"/>
+      <g fill="#fff59d"><circle cx="12" cy="44" r="3"/><circle cx="22" cy="28" r="3"/><circle cx="34" cy="36" r="3.5"/><circle cx="44" cy="17" r="3"/><circle cx="53" cy="30" r="3"/></g>
+      <g fill="#fff" opacity=".8"><circle cx="18" cy="15" r="1"/><circle cx="50" cy="48" r="1"/><circle cx="28" cy="52" r="1"/><circle cx="8" cy="28" r="1"/></g>`),
+    rover: S(`<line x1="40" y1="28" x2="40" y2="17" stroke="#546e7a" stroke-width="2.5"/>
+      <rect x="34" y="9" width="13" height="8" rx="2" fill="#546e7a"/><circle cx="43" cy="13" r="2" fill="#81d4fa"/>
+      <rect x="6" y="20" width="14" height="7" rx="1" fill="#1e88e5" stroke="#0d47a1" stroke-width="1.2"/><line x1="20" y1="26" x2="24" y2="30" stroke="#546e7a" stroke-width="2"/>
+      <rect x="14" y="28" width="38" height="13" rx="3" fill="#cfd8dc" stroke="#78909c" stroke-width="1.5"/>
+      <path d="M16 41L14 49M32 41V49M50 41L52 49" stroke="#546e7a" stroke-width="2.5" fill="none"/>
+      <g fill="#37474f"><circle cx="14" cy="52" r="7"/><circle cx="32" cy="52" r="7"/><circle cx="52" cy="52" r="7"/></g>
+      <g fill="#90a4ae"><circle cx="14" cy="52" r="3"/><circle cx="32" cy="52" r="3"/><circle cx="52" cy="52" r="3"/></g>`),
+    // Clothing
+    rainboot: S(`<path d="M22 8H38V36C38 41 44 42 50 45C55 47 57 50 57 54H22Z" fill="#ffca28" stroke="#f57f17" stroke-width="2" stroke-linejoin="round"/>
+      <rect x="22" y="8" width="16" height="6" fill="#f57f17"/><rect x="21" y="54" width="37" height="6" rx="2" fill="#455a64"/>
+      <path d="M27 22H33" stroke="#fff3c4" stroke-width="2.5" stroke-linecap="round"/>`)
+  };
+  const ico = (v) => v.startsWith("svg:") ? SVG[v.slice(4)] : v;
+
+  /* ---------------- Game data ---------------- */
+  const MODES = {
+    easy:   { label: "Easy",   seconds: 120, text: "2 minutes",  color: "#2e7d32" },
+    medium: { label: "Medium", seconds: 60,  text: "1 minute",   color: "#ef6c00" },
+    hard:   { label: "Hard",   seconds: 30,  text: "30 seconds", color: "#c62828" }
+  };
+
+  const TOPICS = [
+    { id: "food", name: "Food and Drinks", icon: "🍕", color: "#e64a19", items: [
+      ["Pizza","🍕"],["Burger","🍔"],["Tacos","🌮"],["Ice Cream","🍦"],["Fried Rice","🍚"],["Fried Chicken","🍗"],
+      ["French Fries","🍟"],["Coffee","☕"],["Spaghetti","🍝"],["Milkshakes","🥤"],["Cookies","🍪"],["Hot Dogs","🌭"] ]},
+    { id: "animals", name: "Animals", icon: "🐘", color: "#8d6e63", items: [
+      ["Elephant","🐘"],["Cat","🐱"],["Dog","🐶"],["Snake","🐍"],["Lion","🦁"],["Penguin","🐧"],
+      ["Eagle","🦅"],["Turtle","🐢"],["Rabbit","🐰"],["Rooster","🐓"],["Tiger","🐯"],["Pig","🐷"] ]},
+    { id: "vehicles", name: "Vehicles and Transportation", icon: "🚗", color: "#1e88e5", items: [
+      ["Car","🚗"],["Airplane","✈️"],["Fire Truck","🚒"],["Submarine","svg:submarine"],["Sailboat","⛵"],["Bicycle","🚲"],
+      ["Train","🚆"],["Helicopter","🚁"],["School Bus","🚌"],["Police Car","🚓"],["Motorcycle","🏍️"],["Hot Air Balloon","svg:balloon"] ]},
+    { id: "nature", name: "Nature and Weather", icon: "🌈", color: "#43a047", items: [
+      ["Sun","☀️"],["Rainbow","🌈"],["Snowflake","❄️"],["Lightning Bolt","⚡"],["Tornado","🌪️"],["Cloud","☁️"],
+      ["Volcano","🌋"],["Palm Tree","🌴"],["Sunflower","🌻"],["Cactus","🌵"],["Mushroom","🍄"],["Mountain","⛰️"] ]},
+    { id: "sports", name: "Sports and Hobbies", icon: "⚽", color: "#f9a825", items: [
+      ["Soccer Ball","⚽"],["Basketball","🏀"],["Tennis Racket","svg:racket"],["Baseball Bat","svg:bat"],["Guitar","🎸"],["Paintbrush and Palette","🎨"],
+      ["Camera","📷"],["Chess Piece","♟️"],["Skateboard","🛹"],["Microphone","🎤"],["Video Game Controller","🎮"],["Book","📖"] ]},
+    { id: "space", name: "Space and Astronomy", icon: "🚀", color: "#3949ab", items: [
+      ["Rocket Ship","🚀"],["Astronaut","🧑‍🚀"],["Full Moon","🌕"],["Saturn","🪐"],["Shooting Star","🌠"],["UFO","🛸"],
+      ["Telescope","🔭"],["Earth","🌍"],["Satellite","🛰️"],["Constellation","svg:constellation"],["Meteor","☄️"],["Space Rover","svg:rover"] ]},
+    { id: "clothing", name: "Clothing and Accessories", icon: "👕", color: "#d81b60", items: [
+      ["Sunglasses","🕶️"],["Sneakers","👟"],["Baseball Cap","🧢"],["Backpack","🎒"],["Winter Mittens","🧤"],["Wristwatch","⌚"],
+      ["T-Shirt","👕"],["Umbrella","☂️"],["Crown","👑"],["Scarf","🧣"],["Necktie","👔"],["Rain Boots","svg:rainboot"] ]},
+    { id: "shapes", name: "Shapes and Colors", icon: "🔷", color: "#8e24aa", items: [
+      ["Red Heart","svg:heart"],["Yellow Star","svg:star"],["Blue Circle","svg:circle"],["Green Triangle","svg:triangle"],
+      ["Orange Square","svg:square"],["Purple Diamond","svg:diamond"],["Pink Oval","svg:oval"],["Brown Rectangle","svg:rect"],
+      ["Teal Pentagon","svg:pentagon"],["Gold Hexagon","svg:hexagon"],["Silver Crescent","svg:crescent"],["Rainbow Octagon","svg:octagon"] ]}
+  ];
+  const PAIRS = 12;
+
+  /* ---------------- Helpers ---------------- */
+  const $ = (s) => document.querySelector(s);
+  const screens = { mode: $("#screenMode"), topic: $("#screenTopic"), game: $("#screenGame") };
+  const board = $("#board"), overlay = $("#overlay");
+
+  function show(name) { for (const k in screens) screens[k].hidden = (k !== name); }
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+
+  /* ---------------- State ---------------- */
+  const G = { mode: null, topic: null, deck: [], first: null, locked: false, pairs: 0, flips: 0,
+              started: false, over: false, end: 0, remaining: 0, timer: null, gid: 0 };
+
+  /* ---------------- Menus ---------------- */
+  const modesEl = $("#modes");
+  Object.keys(MODES).forEach((key) => {
+    const m = MODES[key];
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "mode-btn"; b.style.setProperty("--mc", m.color);
+    b.innerHTML = `<span class="m-name">${m.label}</span><span class="m-time">${m.text}</span>`;
+    b.addEventListener("click", () => {
+      G.mode = key;
+      const chip = $("#modeChip");
+      chip.textContent = `${m.label} · ${m.text}`; chip.style.background = m.color;
+      show("topic");
+    });
+    modesEl.appendChild(b);
+  });
+
+  const topicsEl = $("#topics");
+  TOPICS.forEach((t) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "topic-btn"; b.style.setProperty("--tc", t.color);
+    b.innerHTML = `<span class="t-ico">${t.icon}</span><span class="t-name">${t.name}</span>`;
+    b.addEventListener("click", () => { G.topic = t; startGame(); });
+    topicsEl.appendChild(b);
+  });
+
+  $("#backToMode").addEventListener("click", () => show("mode"));
+
+  /* ---------------- Game ---------------- */
+  function startGame() {
+    clearInterval(G.timer);
+    G.gid++;
+    const t = G.topic, m = MODES[G.mode];
+    G.deck = shuffle(t.items.flatMap(([n, ic]) => [0, 1].map(() => ({ n, ic, flipped: false, matched: false, el: null }))));
+    G.first = null; G.locked = false; G.pairs = 0; G.flips = 0; G.started = false; G.over = false;
+    G.remaining = m.seconds;
+    overlay.hidden = true;
+
+    $("#gameTopic").textContent = `${t.icon} ${t.name}`;
+    const gm = $("#gameMode"); gm.textContent = m.label; gm.style.background = m.color;
+    board.style.setProperty("--accent", t.color);
+
+    board.innerHTML = "";
+    G.deck.forEach((c, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "card";
+      b.setAttribute("aria-label", `Card ${i + 1}, face down`);
+      b.innerHTML = `<span class="card-inner"><span class="face face-front"><span class="q">?</span></span>` +
+                    `<span class="face face-back"><span class="ico">${ico(c.ic)}</span><span class="lbl">${c.n}</span></span></span>`;
+      b.addEventListener("click", () => onFlip(i));
+      c.el = b; board.appendChild(b);
+    });
+    updateStats();
+    show("game");
+  }
+
+  function setFlipped(c, on) {
+    c.flipped = on;
+    c.el.classList.toggle("flipped", on);
+    const idx = G.deck.indexOf(c) + 1;
+    c.el.setAttribute("aria-label", on ? `Card ${idx}: ${c.n}` : `Card ${idx}, face down`);
+  }
+
+  function onFlip(i) {
+    if (G.over || G.locked) return;
+    const c = G.deck[i];
+    if (c.flipped || c.matched) return;
+    if (!G.started) startTimer();
+
+    G.flips++;
+    setFlipped(c, true);
+    updateStats();
+
+    if (G.first === null) { G.first = i; return; }
+
+    const a = G.deck[G.first];
+    G.first = null;
+
+    if (a.n === c.n) {
+      a.matched = c.matched = true;
+      a.el.classList.add("matched"); c.el.classList.add("matched");
+      G.pairs++;
+      updateStats();
+      if (G.pairs === PAIRS) endGame(true);
+    } else {
+      G.locked = true;
+      const gid = G.gid;
+      setTimeout(() => {
+        if (gid !== G.gid || G.over) return;
+        a.el.classList.add("shake"); c.el.classList.add("shake");
+      }, 350);
+      setTimeout(() => {
+        if (gid !== G.gid || G.over) return;
+        a.el.classList.remove("shake"); c.el.classList.remove("shake");
+        setFlipped(a, false); setFlipped(c, false);
+        G.locked = false;
+      }, 1000);
+    }
+  }
+
+  function startTimer() {
+    G.started = true;
+    G.end = Date.now() + MODES[G.mode].seconds * 1000;
+    G.timer = setInterval(tick, 200);
+  }
+  function tick() {
+    G.remaining = Math.max(0, Math.ceil((G.end - Date.now()) / 1000));
+    updateStats();
+    if (G.remaining <= 0) endGame(false);
+  }
+
+  function updateStats() {
+    const total = MODES[G.mode].seconds;
+    $("#timeB").textContent = fmt(G.remaining);
+    $("#flipsB").textContent = G.flips;
+    $("#pairsB").textContent = `${G.pairs} / ${PAIRS}`;
+    const low = G.remaining <= Math.max(5, total * 0.2) && G.started;
+    $("#bar").classList.toggle("low", low);
+    $("#timeP").classList.toggle("low", low);
+    $("#barFill").style.width = (G.remaining / total * 100) + "%";
+  }
+
+  /* ---------------- End of game ---------------- */
+  function endGame(win) {
+    if (G.over) return;
+    G.over = true; G.locked = true;
+    clearInterval(G.timer);
+    if (G.started) G.remaining = Math.max(0, Math.ceil((G.end - Date.now()) / 1000));
+    updateStats();
+
+    if (!win) {
+      // reveal everything that was missed
+      G.deck.forEach((c) => { if (!c.matched) { setFlipped(c, true); c.el.classList.remove("shake"); c.el.classList.add("missed"); } });
+    }
+    setTimeout(() => showResult(win), win ? 700 : 1400);
+  }
+
+  function showResult(win) {
+    const modal = $("#modal");
+    modal.className = "modal " + (win ? "win" : "lose");
+    $("#resIcon").textContent = win ? "🏆" : "⏰";
+    $("#resTitle").textContent = win ? "You caught every memory!" : "Time's up!";
+    const left = (PAIRS - G.pairs) * 2;
+    $("#resMsg").textContent = win
+      ? `All ${PAIRS} pairs found in ${G.topic.name}.`
+      : `${left} card${left === 1 ? " is" : "s are"} still unmatched. Give it another try!`;
+    const stars = !win ? "" : G.flips <= 32 ? "★★★" : G.flips <= 44 ? "★★☆" : "★☆☆";
+    $("#resStars").textContent = stars;
+    $("#resTime").textContent = fmt(G.remaining);
+    $("#resFlips").textContent = G.flips;
+    $("#resPairs").textContent = `${G.pairs} / ${PAIRS}`;
+    overlay.hidden = false;
+    $("#againBtn").focus();
+  }
+
+  /* ---------------- Buttons ---------------- */
+  $("#restartBtn").addEventListener("click", startGame);
+  $("#againBtn").addEventListener("click", startGame);
+  function toTopics() { clearInterval(G.timer); G.gid++; overlay.hidden = true; show("topic"); }
+  function toModes()  { clearInterval(G.timer); G.gid++; overlay.hidden = true; show("mode"); }
+  $("#changeTopicBtn").addEventListener("click", toTopics);
+  $("#resTopicBtn").addEventListener("click", toTopics);
+  $("#resModeBtn").addEventListener("click", toModes);
+
+  /* Build the animated title: one span per letter, grouped by word */
+  (function buildTitle() {
+    const t = $("#title");
+    let i = 0;
+    const words = "Catch the Memory".split(" ");
+    words.forEach((word, wi) => {
+      const w = document.createElement("span");
+      w.className = "w"; w.setAttribute("aria-hidden", "true");
+      [...word].forEach((ch) => {
+        const s = document.createElement("span");
+        s.className = "ch"; s.textContent = ch; s.style.setProperty("--i", i++);
+        w.appendChild(s);
+      });
+      t.appendChild(w);
+      if (wi < words.length - 1) t.appendChild(document.createTextNode(" "));
+    });
+  })();
+
+  show("mode");
+})();
+</script>
+</body>
+</html>
