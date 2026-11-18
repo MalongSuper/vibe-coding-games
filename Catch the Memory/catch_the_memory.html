@@ -210,6 +210,30 @@
   .modal-actions .row { display: flex; gap: 8px; }
   .modal-actions .row .link-btn { flex: 1; }
 
+  /* ---------- Forfeit confirmation (centered over the game) ---------- */
+  .confirm {
+    position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center;
+    padding: 16px; border-radius: 14px; background: rgba(30, 20, 50, .55);
+  }
+  .confirm[hidden] { display: none; }
+  .confirm .modal { padding: 24px 22px 20px; }
+  .cf-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .cf-actions button { flex: 1; font-size: 15px; padding: 9px 12px; }
+  .btn-danger { background: #c62828; border-color: #c62828; }
+  .btn-danger:hover, .btn-danger:focus-visible { background: #8e1c1c; border-color: #8e1c1c; }
+
+  /* ---------- Sound toggle ---------- */
+  .sound-btn {
+    position: fixed; right: 14px; bottom: 14px; z-index: 5; width: 44px; height: 44px; border-radius: 50%;
+    cursor: pointer; font-size: 20px; line-height: 1; font-family: var(--emoji);
+    background: #fff; border: 2px solid var(--primary); box-shadow: 0 4px 12px rgba(103, 58, 183, .25); transition: .2s;
+  }
+  .sound-btn:hover, .sound-btn:focus-visible { background: #f3edfc; outline: none; transform: scale(1.06); }
+
+  /* ---------- Last 10 seconds: flickering clock ---------- */
+  .details .flicker b { animation: flick .5s steps(1) infinite; }
+  @keyframes flick { 0% { opacity: 1; } 50% { opacity: .2; } }
+
   @media (max-width: 600px) {
     .wrapper { padding: 14px; }
     .board { gap: 6px; }
@@ -221,7 +245,7 @@
   @media (prefers-reduced-motion: reduce) {
     .card-inner, .bar > i { transition: none; }
     .card.shake, .card.matched .card-inner, .modal { animation: none; }
-    .title .ch, .mini, .title-bar { animation: none; }
+    .title .ch, .mini, .title-bar, .details .flicker b { animation: none; }
   }
   ::selection { color: #fff; background: var(--primary); }
 </style>
@@ -283,7 +307,22 @@
       <p><span>Pairs</span><b id="pairsB">0 / 12</b></p>
     </div>
   </section>
+
+  <!-- Forfeit confirmation -->
+  <div class="confirm" id="confirm" hidden>
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="cfTitle" aria-describedby="cfMsg">
+      <div class="big">🏳️</div>
+      <h3 id="cfTitle">Forfeit this game?</h3>
+      <p id="cfMsg">Are you sure you want to forfeit and change the topic? Your progress will be lost.</p>
+      <div class="cf-actions">
+        <button class="link-btn" id="cfNo" type="button">No</button>
+        <button class="btn-fill btn-danger" id="cfYes" type="button">Yes</button>
+      </div>
+    </div>
+  </div>
 </div>
+
+<button class="sound-btn" id="soundBtn" type="button" aria-label="Mute sound" title="Sound on/off">🔊</button>
 
 <!-- Result -->
 <div class="overlay" id="overlay" hidden>
@@ -421,9 +460,76 @@
   }
   const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 
+  /* ---------------- Sound (Web Audio, generated in code, no files) ---------------- */
+  const sfx = (function () {
+    let ctx = null, master = null, muted = false;
+    try { muted = localStorage.getItem("ctm-muted") === "1"; } catch (e) {}
+
+    function ensure() {
+      if (muted) return null;
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        try { ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination); }
+        catch (e) { ctx = null; return null; }
+      }
+      if (ctx.state === "suspended") ctx.resume();
+      return ctx;
+    }
+    // One enveloped oscillator note. t0 = seconds from now, f2 = optional glide target.
+    function tone(f, t0, dur, type, vol, f2) {
+      const c = ensure(); if (!c) return;
+      const t = c.currentTime + t0, o = c.createOscillator(), g = c.createGain();
+      o.type = type; o.frequency.setValueAtTime(f, t);
+      if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.03);
+    }
+    // Short filtered noise burst (paper-like "flip" click)
+    function noise(t0, dur, vol, freq) {
+      const c = ensure(); if (!c) return;
+      const t = c.currentTime + t0, n = Math.max(1, Math.floor(c.sampleRate * dur));
+      const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      s.buffer = buf; f.type = "bandpass"; f.frequency.value = freq; f.Q.value = 0.9; g.gain.value = vol;
+      s.connect(f); f.connect(g); g.connect(master); s.start(t);
+    }
+
+    return {
+      flip()  { noise(0, 0.05, 0.5, 1800); tone(420, 0, 0.08, "triangle", 0.18, 720); },
+      match() { tone(659, 0, 0.16, "sine", 0.28); tone(880, 0.1, 0.16, "sine", 0.28); tone(1319, 0.2, 0.3, "sine", 0.22); },
+      miss()  { tone(220, 0, 0.3, "sawtooth", 0.14, 130); tone(165, 0, 0.3, "square", 0.07, 100); },
+      win()   {
+        [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.3 + i * 0.12, 0.2, "triangle", 0.26));
+        [1047, 1319, 1568].forEach((f) => tone(f, 0.82, 0.8, "sine", 0.18));
+      },
+      lose()  {
+        [392, 349, 311, 262].forEach((f, i) => tone(f, i * 0.26, 0.3, "sawtooth", 0.13));
+        tone(196, 1.04, 0.7, "sawtooth", 0.14, 120);
+      },
+      // Double blip per second; pitch climbs as the clock runs down (n = seconds left, 10..1)
+      tick(n) {
+        const f = 800 + (10 - n) * 70;
+        tone(f, 0, 0.07, "square", 0.1);
+        tone(f, 0.11, 0.07, "square", 0.1);
+        if (n === 1) tone(f * 1.5, 0.22, 0.2, "square", 0.1);
+      },
+      isMuted() { return muted; },
+      setMuted(m) {
+        muted = m;
+        try { localStorage.setItem("ctm-muted", m ? "1" : "0"); } catch (e) {}
+        if (!m) ensure();
+      }
+    };
+  })();
+
   /* ---------------- State ---------------- */
   const G = { mode: null, topic: null, deck: [], first: null, locked: false, pairs: 0, flips: 0,
-              started: false, over: false, end: 0, remaining: 0, timer: null, gid: 0 };
+              started: false, over: false, end: 0, remaining: 0, timer: null, gid: 0,
+              paused: false, pausedLeft: 0, lastBeep: null };
 
   /* ---------------- Menus ---------------- */
   const modesEl = $("#modes");
@@ -460,7 +566,9 @@
     G.deck = shuffle(t.items.flatMap(([n, ic]) => [0, 1].map(() => ({ n, ic, flipped: false, matched: false, el: null }))));
     G.first = null; G.locked = false; G.pairs = 0; G.flips = 0; G.started = false; G.over = false;
     G.remaining = m.seconds;
+    G.paused = false; G.lastBeep = null;
     overlay.hidden = true;
+    $("#confirm").hidden = true;
 
     $("#gameTopic").textContent = `${t.icon} ${t.name}`;
     const gm = $("#gameMode"); gm.textContent = m.label; gm.style.background = m.color;
@@ -488,13 +596,14 @@
   }
 
   function onFlip(i) {
-    if (G.over || G.locked) return;
+    if (G.over || G.locked || G.paused) return;
     const c = G.deck[i];
     if (c.flipped || c.matched) return;
     if (!G.started) startTimer();
 
     G.flips++;
     setFlipped(c, true);
+    sfx.flip();
     updateStats();
 
     if (G.first === null) { G.first = i; return; }
@@ -506,6 +615,7 @@
       a.matched = c.matched = true;
       a.el.classList.add("matched"); c.el.classList.add("matched");
       G.pairs++;
+      sfx.match();
       updateStats();
       if (G.pairs === PAIRS) endGame(true);
     } else {
@@ -514,6 +624,7 @@
       setTimeout(() => {
         if (gid !== G.gid || G.over) return;
         a.el.classList.add("shake"); c.el.classList.add("shake");
+        sfx.miss();
       }, 350);
       setTimeout(() => {
         if (gid !== G.gid || G.over) return;
@@ -532,7 +643,24 @@
   function tick() {
     G.remaining = Math.max(0, Math.ceil((G.end - Date.now()) / 1000));
     updateStats();
+    // Countdown beep once per second for the last 10 seconds (10 -> 1)
+    if (G.remaining >= 1 && G.remaining <= 10 && G.remaining !== G.lastBeep) {
+      G.lastBeep = G.remaining;
+      sfx.tick(G.remaining);
+    }
     if (G.remaining <= 0) endGame(false);
+  }
+
+  /* Pause / resume the clock (used by the forfeit confirmation) */
+  function pauseGame() {
+    if (G.paused) return;
+    G.paused = true;
+    if (G.started && !G.over) { G.pausedLeft = Math.max(0, G.end - Date.now()); clearInterval(G.timer); }
+  }
+  function resumeGame() {
+    if (!G.paused) return;
+    G.paused = false;
+    if (G.started && !G.over) { G.end = Date.now() + G.pausedLeft; G.timer = setInterval(tick, 200); }
   }
 
   function updateStats() {
@@ -543,6 +671,7 @@
     const low = G.remaining <= Math.max(5, total * 0.2) && G.started;
     $("#bar").classList.toggle("low", low);
     $("#timeP").classList.toggle("low", low);
+    $("#timeP").classList.toggle("flicker", G.started && !G.over && G.remaining > 0 && G.remaining <= 10);
     $("#barFill").style.width = (G.remaining / total * 100) + "%";
   }
 
@@ -558,7 +687,9 @@
       // reveal everything that was missed
       G.deck.forEach((c) => { if (!c.matched) { setFlipped(c, true); c.el.classList.remove("shake"); c.el.classList.add("missed"); } });
     }
-    setTimeout(() => showResult(win), win ? 700 : 1400);
+    if (win) sfx.win(); else sfx.lose();
+    const gid = G.gid;
+    setTimeout(() => { if (gid === G.gid) showResult(win); }, win ? 700 : 1400);
   }
 
   function showResult(win) {
@@ -582,9 +713,37 @@
   /* ---------------- Buttons ---------------- */
   $("#restartBtn").addEventListener("click", startGame);
   $("#againBtn").addEventListener("click", startGame);
-  function toTopics() { clearInterval(G.timer); G.gid++; overlay.hidden = true; show("topic"); }
-  function toModes()  { clearInterval(G.timer); G.gid++; overlay.hidden = true; show("mode"); }
-  $("#changeTopicBtn").addEventListener("click", toTopics);
+  const confirmEl = $("#confirm");
+  function leave(screen) {
+    clearInterval(G.timer); G.gid++; G.paused = false;
+    overlay.hidden = true; confirmEl.hidden = true;
+    show(screen);
+  }
+  function toTopics() { leave("topic"); }
+  function toModes()  { leave("mode"); }
+
+  // Topics during play -> ask before forfeiting (clock is paused while the box is open)
+  function askForfeit() {
+    if (G.over) { toTopics(); return; }
+    pauseGame();
+    confirmEl.hidden = false;
+    $("#cfNo").focus();
+  }
+  function cancelForfeit() { confirmEl.hidden = true; resumeGame(); }
+  $("#changeTopicBtn").addEventListener("click", askForfeit);
+  $("#cfYes").addEventListener("click", toTopics);
+  $("#cfNo").addEventListener("click", cancelForfeit);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !confirmEl.hidden) cancelForfeit(); });
+
+  // Sound toggle
+  const soundBtn = $("#soundBtn");
+  function paintSound() {
+    const m = sfx.isMuted();
+    soundBtn.textContent = m ? "🔇" : "🔊";
+    soundBtn.setAttribute("aria-label", m ? "Unmute sound" : "Mute sound");
+  }
+  soundBtn.addEventListener("click", () => { sfx.setMuted(!sfx.isMuted()); paintSound(); });
+  paintSound();
   $("#resTopicBtn").addEventListener("click", toTopics);
   $("#resModeBtn").addEventListener("click", toModes);
 
