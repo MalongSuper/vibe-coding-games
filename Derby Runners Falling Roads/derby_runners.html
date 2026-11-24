@@ -264,6 +264,21 @@
             align-items: center;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
             flex-shrink: 0;
+            position: relative;
+        }
+        .new-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 2;
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: #ef233c;
+            color: #ffffff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18);
         }
         .runner-card.selected {
             border-color: #ef233c;
@@ -978,7 +993,13 @@
             { id: 37, name: "Sakura Bakushin O", speed: 97, stamina: 44, power: 83, skill: 81, gut: 75, wit: 61,
                 visuals: { hair: '#8B4513', skin: '#ffcdce', clothes: '#FF69B4', accent: '#FFFFFF' } },
             { id: 38, name: "TM Opera O", speed: 85, stamina: 68, power: 65, skill: 90, gut: 62, wit: 70,
-                visuals: { hair: '#FF9800', skin: '#ffcdce', clothes: '#FFFFFF', accent: '#FF9800' } }
+                visuals: { hair: '#FF9800', skin: '#ffcdce', clothes: '#FFFFFF', accent: '#FF9800' } },
+
+            // ── NEW RUNNERS ──
+            { id: 39, name: "Mr C.B.", speed: 91, stamina: 56, power: 72, skill: 87, gut: 53, wit: 78,
+                isNew: true, visuals: { hair: '#B58A60', skin: '#ffcdce', clothes: '#2E7D32', accent: '#FFFFFF' } },
+            { id: 40, name: "Sirius Symboli", speed: 84, stamina: 47, power: 85, skill: 92, gut: 75, wit: 69,
+                isNew: true, visuals: { hair: '#4E342E', skin: '#ffcdce', clothes: '#2E7D32', accent: '#212121' } }
         ];
 
         const GAME = {
@@ -1323,6 +1344,7 @@
                 }).join('');
 
                 card.innerHTML = `
+                    ${char.isNew ? '<div class="new-badge">NEW</div>' : ''}
                     <div class="canvas-holder"><canvas id="${cardCanvasId}" width="80" height="110"></canvas></div>
                     <h3>${char.name}</h3>
                     ${statsHtml}
@@ -1619,6 +1641,28 @@
                 cCtx.fill();
             } else if (id === 38) {
                 cCtx.fillRect(-16, -66, 32, 25);
+            } else if (id === 39) {
+                cCtx.fillRect(-16, -66, 32, 28);
+                cCtx.fillStyle = visuals.hair;
+                cCtx.fillRect(-14, -82, 28, 24);
+                cCtx.fillRect(-18, -38, 6, 18);
+                cCtx.fillRect(12, -38, 6, 18);
+
+                // Mr C.B.'s white-striped green hat
+                cCtx.fillStyle = '#2E7D32';
+                cCtx.beginPath();
+                cCtx.ellipse(0, -82, 19, 7, 0, 0, Math.PI * 2);
+                cCtx.fill();
+                cCtx.fillRect(-13, -94, 26, 14);
+                cCtx.fillStyle = '#FFFFFF';
+                cCtx.fillRect(-13, -88, 26, 4);
+            } else if (id === 40) {
+                cCtx.fillRect(-16, -66, 32, 42);
+                cCtx.fillStyle = visuals.hair;
+                cCtx.fillRect(-14, -82, 28, 26);
+                cCtx.fillRect(-16, -30, 32, 16);
+                cCtx.fillStyle = 'rgba(255,255,255,0.12)';
+                cCtx.fillRect(-10, -58, 20, 4);
             }
 
             // ── clothes ──
